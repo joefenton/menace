@@ -1,7 +1,7 @@
 """
----------------------------------
-Naughts & Crosses based on MENACE
---------------------------------
+------------------------
+Training file for MENACE
+------------------------
 """
 print '==========================================='
 print '==== Naughts & Crosses based on MENACE ===='
@@ -22,12 +22,17 @@ import matplotlib.pyplot as plt
 reward_win = 1
 reward_draw = 0
 reward_lose = -1
-print 'Beginer = 50 '
-print 'Novice  = 150'
-print 'Expert  = 500'
+print 'The higher the number of iterations the'
+print 'better the computer will play.'
 iterations = int(raw_input('Enter the number of iterations: '))
-print_games = False
-print_mode = False
+prob_mode = raw_input('Weighted average decision making (y/n): ')
+
+# -------------
+# Print options
+# -------------
+# prob_mode = n    # y = weighted average of possible moves
+print_games = False  # True = Print count of games
+print_mode = False   # True = Print stats for debugging
 
 print '---------'
 print 'menace.py'
@@ -49,16 +54,17 @@ memory_weights_B = []
 graph_win = []
 graph_lose = []
 graph_draw = []
+graph_boards = []
 status_counts = [0,0,0] # Win, Lose, Draw
 
-def print_weights(boards,weights_a):
+def print_weights(boards,weights):
     for i in range(len(boards)):
-        print 'Board layout | Weights A (%s)' % i
-        print boards[i][0:3], "|" , weights_a[i][0:3]
-        print boards[i][3:6], "|" , weights_a[i][3:6]
-        print boards[i][6:9], "|" , weights_a[i][6:9]
+        print 'Board layout | Weights (%s)' % i
+        print boards[i][0:3], "|" , weights[i][0:3]
+        print boards[i][3:6], "|" , weights[i][3:6]
+        print boards[i][6:9], "|" , weights[i][6:9]
 
-def make_graph(win,lose,draw):    
+def make_graph(win,lose,draw,boards):    
     plt.plot(win, 'r-', label='Win')
     plt.plot(lose, 'b-', label='Lose')
     plt.plot(draw, 'g-', label='Draw')    
@@ -66,32 +72,104 @@ def make_graph(win,lose,draw):
     plt.xlabel('Iterations')
     title = plt.title('Cumulative results for Player 1')
     legend = plt.legend(loc='lower right', shadow=False)
-    plt.show()        
-        
+    plt.show()
+    
+    plt.plot(boards, 'r-', label='Boards in memory')
+    plt.ylabel('Count of boards in memory')
+    plt.xlabel('Iterations')
+    title = plt.title('Number of boards in memory for Player 1')
+    plt.show()
+    
+
+def rotate_matrix(matrix):
+    rot_matrix = []
+    rot_matrix.append(matrix[6])
+    rot_matrix.append(matrix[3])
+    rot_matrix.append(matrix[0])
+    rot_matrix.append(matrix[7])
+    rot_matrix.append(matrix[4])
+    rot_matrix.append(matrix[1])
+    rot_matrix.append(matrix[8])
+    rot_matrix.append(matrix[5])
+    rot_matrix.append(matrix[2])
+    return rot_matrix
+    
 def memory_check(game_board,mem_boards,mem_weights):
+    
+    # *********************************
+    # Need to make this weighted random
+    # *********************************
     opt = []
     opt_weights = []
     f_opt = []
     
     # Find the possible moves
     opt = [i for i, x in enumerate(game_board) if x == 0]
+
+    # Probability method    
+    # ------------------
+    if prob_mode == 'y':
+
+        # See if the board is in the memory
+        memory_status = False # Default to no match
+        if game_board in mem_boards:
+            memory_status = True
+        else:
+            game_board = rotate_matrix(game_board)
+            if game_board in mem_boards:
+                memory_status = True
+            else:
+                game_board = rotate_matrix(game_board)
+                if game_board in mem_boards:
+                    memory_status = True
+                else:
+                    game_board = rotate_matrix(game_board)
+                    if game_board in mem_boards:
+                        memory_status = True
+
+        if memory_status == True:
+            # Find the index of the match
+            pos = mem_boards.index(game_board)
+        
+            # Find all the weights for posible moves
+            for p in opt:
+                opt_weights.append(mem_weights[pos][p])
+        
+            # Normalise the weights
+            minimum = abs(min(opt_weights))
+            for s in range(len(opt_weights)):
+                opt_weights[s] = (opt_weights[s] + minimum + 1)*10    
+        
+            # Create new weighted array of options
+            for q in range(len(opt_weights)):
+                for r in range(int(opt_weights[q])):
+                    f_opt.append(opt[q])
+            opt = f_opt
     
-    # Find the maximum out of the possible moves
-    if game_board in mem_boards:
-        opt_weights = []
-        pos = mem_boards.index(game_board)
-        for p in opt:
-            opt_weights.append(mem_weights[pos][p])
-        m = max(opt_weights)
+        # Choose a random value from the array of options
+        move = random.choice(opt)
+        return move
+    
+    # Absolute method
+    # ---------------
+    else:
+
+        # Find the maximum out of the possible moves
+        if game_board in mem_boards:
+            opt_weights = []
+            pos = mem_boards.index(game_board)
+            for p in opt:
+                opt_weights.append(mem_weights[pos][p])
+            m = max(opt_weights)
         
-        for p in range(len(opt)):
-            ind = opt[p]
-            if m == mem_weights[pos][ind]:
-                f_opt.append(opt[p])
-        opt = f_opt
+            for p in range(len(opt)):
+                ind = opt[p]
+                if m == mem_weights[pos][ind]:
+                    f_opt.append(opt[p])
+            opt = f_opt
         
-    move = random.choice(opt)
-    return move
+        move = random.choice(opt)
+        return move
 
 def make_move(game_board,player,move,temp_memory_boards,temp_memory_moves):
     # Make the move
@@ -116,16 +194,19 @@ def make_move(game_board,player,move,temp_memory_boards,temp_memory_moves):
 def assign_weights(status,temp_memory_boards,temp_memory_moves):
     for i in range(len(temp_memory_boards)):   
         
+        # depreciation factor
+        dep = 1.5
+        
         # Setting the reward values    
         if status == 1:
-            reward_a = reward_win
-            reward_b = reward_lose
+            reward_a = reward_win * i * dep
+            reward_b = reward_lose * i * dep
         elif status == 2:
-            reward_a = reward_lose
-            reward_b = reward_win
+            reward_a = reward_lose * i * dep
+            reward_b = reward_win * i * dep
         else:
-            reward_a = reward_draw
-            reward_b = reward_draw
+            reward_a = reward_draw * i * dep
+            reward_b = reward_draw * i * dep   # This is for the discounting
         
         weight_a = [0,0,0,0,0,0,0,0,0]
         weight_b = [0,0,0,0,0,0,0,0,0]
@@ -215,6 +296,7 @@ def win_check(game_board):
         graph_win.append(status_counts[0])
         graph_lose.append(status_counts[1])
         graph_draw.append(status_counts[2])
+        graph_boards.append(len(memory_boards_A))
         
     return game
     
@@ -243,34 +325,83 @@ def training(iterations):
         if print_mode == True and iterations > 1:
             print ' ----------------- Next Game ----------------- '
 
-def game():
+def game(mode):
     game_board = [0,0,0,0,0,0,0,0,0]
     temp_memory_boards = []
     temp_memory_moves = []
     game = "on"
-    while game == 'on':        
-        # Player 1 turn:
-        # --------------
-        move = memory_check(game_board,memory_boards_A,memory_weights_A)
-        make_move(game_board,1,move,temp_memory_boards,temp_memory_moves)
-        game = win_check(game_board)
-        print game_board[0:3]
-        print game_board[3:6]
-        print game_board[6:9]
-        print '-----------------'
-        if game == 'on':
+    
+    if mode == 1:
+    # ------------------
+    # Computer vs. Human
+    # ------------------    
+        while game == 'on':        
+            # Player 1 turn:
+            # --------------
+            move = memory_check(game_board,memory_boards_A,memory_weights_A)
+            make_move(game_board,1,move,temp_memory_boards,temp_memory_moves)
+            game = win_check(game_board)
+            print game_board[0:3]
+            print game_board[3:6]
+            print game_board[6:9]
+            print '-----------------'
+            if game == 'on':
+                move = int(raw_input('Where would you like to go (1 - 9): '))
+                move = move - 1;
+                game_board[move] = 2
+                game = win_check(game_board)
+        if game == 1:
+            print '==============================='
+            print '== The computer won the game =='
+            print '==============================='
+        elif game == 2:
+            print '======================'
+            print '== You won the game =='
+            print '======================'
+        else:
+            print '==================='
+            print '== It was a draw =='
+            print '==================='
+    elif mode == 2:
+    # ------------------
+    # Human vs. Computer
+    # ------------------
+        while game == 'on':     
+            # Player 2 turn:
+            # --------------
+            print 'Test: Player 2 turn'
+            
             move = int(raw_input('Where would you like to go (1 - 9): '))
             move = move - 1;
-            game_board[move] = 2
+            game_board[move] = 1
             game = win_check(game_board)
-    if game == 1:
-        print 'The computer won the game'
-    elif game == 2:
-        print 'You won the game'
-    else:
-        print 'It was a draw'
+            if game == 'on':
+                print 'Test: Computer turn'
+                move = memory_check(game_board,memory_boards_B,memory_weights_B)
+                make_move(game_board,2,move,temp_memory_boards,temp_memory_moves)
+                game = win_check(game_board)
+                print game_board[0:3]
+                print game_board[3:6]
+                print game_board[6:9]
+                print '-----------------'
+        if game == 1:
+            print '======================'
+            print '== You won the game =='
+            print '======================'
+        elif game == 2:
+            print '==============================='
+            print '== The computer won the game =='
+            print '==============================='
+        else:
+            print '==================='
+            print '== It was a draw =='
+            print '==================='
     assign_weights(game,temp_memory_boards,temp_memory_moves)
-    print 'Type \'game()\' to start a new game'
+    print '----------------------------------------'
+    print 'Type \'game(mode)\' to start a new game'
+    print 'mode = 1 (Computer vs. Human)'
+    print 'mode = 2 (Human vs. Computer)'
+    print '----------------------------------------'
             
 # ------------------       
 # Executing the code
@@ -279,13 +410,19 @@ training(iterations)
 print '- Training complete -'
 ans1 = raw_input('Plot a graph of training? (y/n) ')
 if ans1 == 'y':
-    make_graph(graph_win, graph_lose, graph_draw)
-print '-------------------------------------------------'
-print '        Starting computer vs. human game'
-print '-------------------------------------------------'
-print 'Notes:'
-print 'You can overwrite the computers moves but don\'t'
-print 'The computer will learn from the games'
-print 'Select your move with the number keys'
-print '-------------------------------------------------'
-game()
+    make_graph(graph_win, graph_lose, graph_draw, graph_boards)
+    
+ans4 = raw_input('Would you like to play a game? (y/n) ')
+if ans4 == 'y':    
+    print '-------------------------------------------------'
+    print '        Starting computer vs. human game'
+    print '-------------------------------------------------'
+    print 'Notes:'
+    print 'You can overwrite the computers moves but don\'t'
+    print 'The computer will learn from the games'
+    print 'Select your move with the number keys'
+    print 'Mode = 1 (Computer vs. Human)'
+    print 'Mode = 2 (Human vs. Computer)'
+    print '-------------------------------------------------'
+    ans3 = int(raw_input('Select mode: (1 or 2) '))
+    game(ans3)
